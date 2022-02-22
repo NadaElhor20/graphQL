@@ -9,6 +9,7 @@ const jwtSecret = 'husshh';
 const express = require('express');
 const User = require('./models/User');
 const Post = require('./models/Post');
+const Post = require('./models/Comment');
 /*
 1 - Fork the repo
 2 - clone your repo after forking
@@ -49,15 +50,25 @@ const schema = buildSchema(`
     content: String!
     user: User!
   }
+   type Comment{
+    content: String!
+    user: User!
+    post: Post!
+
+  }
   type Query{
     hello: String
     getMyPosts(token: String): [Post!]!
     getAllPosts: [Post!]!
+    getPostComments(token: String,postId:String): [Comments!]!
   }
   type Mutation{
     createUser(userData: UserRegistrationInput): User
     loginUser(username: String, password: String): LoginPayload
     postCreate(token:String, content:String): String
+    postDelete(token:String,postId:String): String
+    postEdit(content:String,token:String,postId:String): String
+    commentCreate(token:String, content:String,postId:String): String
   }
 `);
 
@@ -111,8 +122,36 @@ const postsMutation = {
     await post.save();
     return 'Success';
   },
+  postDelete: async({ token, postId }) => {
+    const user = await auth(token);
+    if (!user) return 'Authentication error';
+    try {
+        await Post.deleteOne({_id: postId });
+    } catch (err) {
+        return 'Post Deletetion Failed';
+    }
+    return 'Post Deleted Successfully';
+},
+postEdit: async ({ content, token, postId }) => {
+		const user = await auth(token);
+		if (!user) return "Authentication error";
+		const post = await findOneAndUpdate({ _id: postId }, { content });
+		return "Success";
+	},
+
 };
 
+const commentsMutation = {
+  commentCreate: async ({ content, token,postId }) => {
+    const user = await auth(token);
+    if (!user) return 'Authentication error';
+    const userId = user.id;
+    const comment = new Comment({ userId,content,postId });
+    await comment.save();
+    return 'Success';
+  },
+
+};
 
 const postsQuery = {
   getMyPosts: async ({ token }) => {
@@ -124,16 +163,26 @@ const postsQuery = {
   },
 
   getAllPosts: async () => {
-    const posts = await Post.find({}).populate('userId')
-    return posts.map(p => ({ ...p.toJSON(), user: p.userId }))
+    const comments = await Comment.find({}).populate('postId')
+    return comments.map(c => ({ ...c.toJSON(), post: c.postId }))
   },
 };
 
+const commentsQuery = {
+  getPostComments: async ({ token,postId }) => {
+    const user = await auth(token);
+    if (!user) return 'Authentication error';
+    const comments = await Comment.find({ postId });
+    return comments;
+  },
+};
 
 const rootValue = {
   ...userMutations,
   ...postsMutation,
+  ...commentsMutation,
   ...postsQuery,
+  ...commentsQuery,
   hello: () => 'Hello world',
 };
 
